@@ -1,0 +1,891 @@
+openapi: 3.0.3
+info:
+  title: Justransform Canonical Appointment Scheduling API
+  version: 1.1.1
+  description: |
+    Enterprise API for appointment scheduling across multiple warehouse management and scheduling platforms.
+    Supports industry-standard communication protocols for carriers, brokers, and shippers.
+    Integrates with 50+ scheduling systems including Blue Yonder, Manhattan, One Network, and more.
+  contact:
+    name: JT API Support
+    email: api-support@jt.com
+
+servers:
+  - url: https://api.jt-scheduling.com
+    description: Production server
+  - url: https://sandbox-api.jt-scheduling.com
+    description: Sandbox server
+
+security:
+  - ApiKeyAuth: []
+  - OAuth2: [read, write]
+
+tags:
+  - name: Appointments
+    description: Appointment-based APIs following RPC patterns for scheduling operations
+  - name: Webhooks
+    description: APIs for managing webhook subscriptions for asynchronous responses
+  - name: Webhook Events
+    description: Event payloads sent to registered webhook endpoints
+
+paths:
+  /appointments/v1/fetch-available-appointments:
+    post:
+      operationId: fetch-available-appointments
+      summary: Fetch Available Appointments
+      description: |
+        Retrieve available appointment times for a particular load at a specific stop.
+        Supports synchronous and asynchronous response patterns via callbacks or polling.
+      tags:
+        - Appointments
+      parameters:
+        - name: callbackUrl
+          in: header
+          schema:
+            type: string
+            format: uri
+          description: Callback URL for asynchronous responses
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              title: Fetch Available Appointments Request
+              required:
+                - identifiers
+              properties:
+                identifiers:
+                  description: Identifiers for the stop or pending request
+                  oneOf:
+                    - $ref: '#/components/schemas/commonIdentifiers'
+                    - $ref: '#/components/schemas/appointmentIdentifier'
+                    - $ref: '#/components/schemas/requestIdentifier'
+                dateRestrictions:
+                  description: Optional date filtering
+                  oneOf:
+                    - type: object
+                      title: Date Range
+                      required:
+                        - startDate
+                        - endDate
+                      properties:
+                        startDate:
+                          type: string
+                          format: date
+                        endDate:
+                          type: string
+                          format: date
+                    - type: object
+                      title: Exact Date
+                      required:
+                        - exactDate
+                      properties:
+                        exactDate:
+                          type: string
+                          format: date
+      responses:
+        '200':
+          description: Successful response
+          headers:
+            Retry-After:
+              schema:
+                type: string
+              description: Retry timing for pending requests
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fetchAvailableAppointmentsResponse'
+      callbacks:
+        response:
+          '{$request.header.callbackUrl}':
+            post:
+              requestBody:
+                content:
+                  application/json:
+                    schema:
+                      $ref: '#/components/schemas/fetchAvailableAppointmentsResponse'
+              responses:
+                '204':
+                  description: Callback received successfully
+                '400':
+                  description: Bad request
+                '500':
+                  description: Internal server error
+
+  /appointments/v1/schedule-appointment:
+    post:
+      operationId: schedule-appointment
+      summary: Schedule Appointment
+      description: |
+        Schedule an appointment for a load at a specific stop.
+        Supports AUTOMATIC (synchronous), DEFERRED (asynchronous), and CARRIER_CONFIRMATION_REQUIRED appointment types.
+      tags:
+        - Appointments
+      parameters:
+        - name: callbackUrl
+          in: header
+          schema:
+            type: string
+            format: uri
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              title: Schedule Appointment Request
+              required:
+                - identifiers
+                - preferredAppointment
+              properties:
+                identifiers:
+                  $ref: '#/components/schemas/commonIdentifiers'
+                preferredAppointment:
+                  $ref: '#/components/schemas/clientRequestedAppointment'
+                reasonCode:
+                  type: string
+                  description: Reason for scheduling
+                comment:
+                  type: string
+                  description: Additional comments
+      responses:
+        '200':
+          description: Successful response
+          headers:
+            Retry-After:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/appointmentModificationResponse'
+      callbacks:
+        response:
+          '{$request.header.callbackUrl}':
+            post:
+              requestBody:
+                content:
+                  application/json:
+                    schema:
+                      $ref: '#/components/schemas/appointmentModificationResponse'
+              responses:
+                '204':
+                  description: Callback received successfully
+                '400':
+                  description: Bad request
+                '500':
+                  description: Internal server error
+
+  /appointments/v1/reschedule-appointment:
+    post:
+      operationId: reschedule-appointment
+      summary: Reschedule Appointment
+      description: |
+        Reschedule an existing appointment to a new time slot.
+        Original appointment remains if reschedule request fails.
+      tags:
+        - Appointments
+      parameters:
+        - name: callbackUrl
+          in: header
+          schema:
+            type: string
+            format: uri
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              title: Reschedule Appointment Request
+              required:
+                - identifiers
+                - preferredAppointment
+              properties:
+                identifiers:
+                  $ref: '#/components/schemas/appointmentIdentifier'
+                preferredAppointment:
+                  $ref: '#/components/schemas/clientRequestedAppointment'
+                reasonCode:
+                  type: string
+                comment:
+                  type: string
+      responses:
+        '200':
+          description: Successful response
+          headers:
+            Retry-After:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/appointmentModificationResponse'
+
+  /appointments/v1/cancel-appointment:
+    post:
+      operationId: cancel-appointment
+      summary: Cancel Appointment
+      description: Cancel an existing appointment
+      tags:
+        - Appointments
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              title: Cancel Appointment Request
+              required:
+                - identifiers
+              properties:
+                identifiers:
+                  $ref: '#/components/schemas/appointmentIdentifier'
+                reasonCode:
+                  type: string
+                comment:
+                  type: string
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/responseInfoSynchronous'
+
+  /appointments/v1/fetch-appointment-details:
+    post:
+      operationId: fetch-appointment-details
+      summary: Fetch Appointment Details
+      description: Retrieve details of an existing appointment
+      tags:
+        - Appointments
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              title: Fetch Appointment Details Request
+              required:
+                - identifiers
+              properties:
+                identifiers:
+                  $ref: '#/components/schemas/appointmentIdentifier'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/appointmentDetailsResponse'
+
+  /webhooks/v1/subscriptions:
+    get:
+      operationId: get-subscriptions
+      summary: Get Subscriptions
+      description: Retrieve all webhook subscriptions
+      tags:
+        - Webhooks
+      responses:
+        '200':
+          description: List of subscriptions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  subscriptions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/subscription'
+
+    post:
+      operationId: subscribe
+      summary: Subscribe to Events
+      description: Create a new webhook subscription
+      tags:
+        - Webhooks
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - eventTypes
+              properties:
+                eventTypes:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/webhookEventType'
+                callbackUrl:
+                  type: string
+                  format: uri
+      responses:
+        '201':
+          description: Subscription created
+          headers:
+            Location:
+              schema:
+                type: string
+                format: uri
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/subscription'
+
+  /webhooks/v1/subscriptions/{subscriptionId}:
+    parameters:
+      - name: subscriptionId
+        in: path
+        required: true
+        schema:
+          type: string
+    
+    get:
+      operationId: get-subscription
+      summary: Get Subscription
+      description: Retrieve a specific subscription
+      tags:
+        - Webhooks
+      responses:
+        '200':
+          description: Subscription details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/subscription'
+    
+    put:
+      operationId: update-subscription
+      summary: Update Subscription
+      description: Update an existing subscription
+      tags:
+        - Webhooks
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/subscription'
+      responses:
+        '200':
+          description: Subscription updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/subscription'
+    
+    delete:
+      operationId: delete-subscription
+      summary: Delete Subscription
+      description: Remove a webhook subscription
+      tags:
+        - Webhooks
+      responses:
+        '204':
+          description: Subscription deleted
+
+  # Webhook event endpoints (for documentation purposes)
+  /webhook/appointment-changed:
+    post:
+      tags:
+        - Webhook Events
+      operationId: appointment-changed-event
+      summary: Appointment Changed Event
+      description: Notification when an appointment is modified
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              title: Appointment Changed Event
+              required:
+                - identifiers
+                - currentAppointment
+                - occurredAt
+              properties:
+                identifiers:
+                  allOf:
+                    - $ref: '#/components/schemas/commonIdentifiers'
+                    - $ref: '#/components/schemas/appointmentId'
+                currentAppointment:
+                  type: object
+                  properties:
+                    appointment:
+                      $ref: '#/components/schemas/appointment'
+                    appointmentStatus:
+                      $ref: '#/components/schemas/appointmentStatus'
+                previousAppointment:
+                  type: object
+                  properties:
+                    appointment:
+                      $ref: '#/components/schemas/appointment'
+                    appointmentStatus:
+                      $ref: '#/components/schemas/appointmentStatus'
+                reasonCode:
+                  type: string
+                comment:
+                  type: string
+                occurredAt:
+                  type: string
+                  format: date-time
+      responses:
+        '204':
+          description: Event received
+
+  /webhook/fetch-available-appointments:
+    post:
+      tags:
+        - Webhook Events
+      operationId: fetch-available-appointments-event
+      summary: Available Appointments Event
+      description: Asynchronous delivery of available appointment results
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - identifiers
+                - occurredAt
+              properties:
+                identifiers:
+                  $ref: '#/components/schemas/requestIdentifier'
+                status:
+                  type: string
+                  enum: [SUCCESS, FAILURE]
+                appointments:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/availableAppointment'
+                problemDetails:
+                  $ref: '#/components/schemas/problemDetails'
+                occurredAt:
+                  type: string
+                  format: date-time
+      responses:
+        '204':
+          description: Event received
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+    OAuth2:
+      type: oauth2
+      flows:
+        clientCredentials:
+          tokenUrl: https://auth.jt-scheduling.com/oauth/token
+          scopes:
+            read: Read appointment data
+            write: Create and modify appointments
+
+  schemas:
+    commonIdentifiers:
+      type: object
+      title: Load and Stop Identifiers
+      description: Standard identifiers for freight loads and stops
+      additionalProperties: false
+      properties:
+        primaryReferenceNumber:
+          type: string
+          description: Primary reference number identifying the load
+        poNumber:
+          type: string
+          description: Purchase Order number
+        bolNumber:
+          type: string
+          description: Bill of Lading number
+        stopSequenceNumber:
+          type: integer
+          minimum: 0
+          description: 0-based index for stop position
+        locationId:
+          type: string
+          description: Facility-specific location identifier
+        locationAddress:
+          $ref: '#/components/schemas/address'
+
+    appointmentIdentifier:
+      type: object
+      title: Appointment Identifier
+      oneOf:
+        - $ref: '#/components/schemas/commonIdentifiers'
+        - type: object
+          required:
+            - appointmentId
+          properties:
+            appointmentId:
+              type: string
+              description: Unique appointment ID
+
+    requestIdentifier:
+      type: object
+      required:
+        - requestIdentifier
+      properties:
+        requestIdentifier:
+          type: string
+          description: ID for polling asynchronous requests
+
+    clientRequestedAppointment:
+      oneOf:
+        - type: object
+          title: By Appointment ID
+          required:
+            - id
+          properties:
+            id:
+              type: string
+              description: Available appointment ID
+            appointmentType:
+              $ref: '#/components/schemas/appointmentType'
+            loadingType:
+              $ref: '#/components/schemas/loadingType'
+        - type: object
+          title: By Details
+          required:
+            - arrivalWindow
+          properties:
+            appointmentType:
+              $ref: '#/components/schemas/appointmentType'
+            arrivalWindow:
+              $ref: '#/components/schemas/arrivalWindow'
+            dockGroup:
+              $ref: '#/components/schemas/dockGroup'
+            dockDoor:
+              $ref: '#/components/schemas/dockDoor'
+            loadingType:
+              $ref: '#/components/schemas/loadingType'
+
+    availableAppointment:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Available appointment identifier
+        appointmentType:
+          $ref: '#/components/schemas/appointmentType'
+        arrivalWindow:
+          $ref: '#/components/schemas/arrivalWindow'
+        dockGroup:
+          $ref: '#/components/schemas/dockGroup'
+        dockDoor:
+          $ref: '#/components/schemas/dockDoor'
+        loadingType:
+          $ref: '#/components/schemas/loadingType'
+
+    appointment:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Appointment identifier
+        arrivalWindow:
+          $ref: '#/components/schemas/arrivalWindow'
+        dockGroup:
+          $ref: '#/components/schemas/dockGroup'
+        dockDoor:
+          $ref: '#/components/schemas/dockDoor'
+        loadingType:
+          $ref: '#/components/schemas/loadingType'
+
+    arrivalWindow:
+      type: object
+      required:
+        - startDateTime
+        - duration
+      properties:
+        startDateTime:
+          type: string
+          format: date-time
+          description: Appointment start time
+        duration:
+          type: string
+          format: duration
+          description: ISO 8601 duration format (e.g., PT1H for 1 hour)
+
+    appointmentType:
+      type: string
+      description: |
+        - AUTOMATIC: Instant confirmation
+        - DEFERRED: Asynchronous confirmation required
+        - FCFS: First come, first served (no scheduling needed)
+        - CARRIER_CONFIRMATION_REQUIRED: Pre-scheduled, needs confirmation
+      enum:
+        - AUTOMATIC
+        - DEFERRED
+        - FCFS
+        - CARRIER_CONFIRMATION_REQUIRED
+
+    appointmentStatus:
+      type: string
+      enum:
+        - NOT_SCHEDULED
+        - CONFIRMED
+        - UNCONFIRMED
+        - PENDING
+        - REJECTED
+        - CANCELED
+
+    loadingType:
+      type: string
+      enum:
+        - LIVE
+        - DROP
+        - PRELOAD
+
+    dockGroup:
+      type: object
+      required:
+        - name
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+
+    dockDoor:
+      type: object
+      required:
+        - name
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+
+    responseInfoSynchronous:
+      oneOf:
+        - $ref: '#/components/schemas/responseInfoSuccess'
+        - $ref: '#/components/schemas/responseInfoFailure'
+
+    responseInfoSuccess:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum: [SUCCESS]
+
+    responseInfoPending:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum: [PENDING]
+        requestIdentifier:
+          type: string
+
+    responseInfoFailure:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum: [FAILURE]
+        problemDetails:
+          $ref: '#/components/schemas/problemDetails'
+
+    problemDetails:
+      type: array
+      items:
+        oneOf:
+          - $ref: '#/components/schemas/entityNotFoundError'
+          - $ref: '#/components/schemas/capabilityNotSupportedError'
+          - $ref: '#/components/schemas/invalidArgumentError'
+          - $ref: '#/components/schemas/appointmentError'
+          - $ref: '#/components/schemas/problemDetail'
+
+    problemDetail:
+      type: object
+      properties:
+        title:
+          type: string
+        detail:
+          type: string
+
+    entityNotFoundError:
+      type: object
+      properties:
+        title:
+          type: string
+          enum: ['https://docs.freightapis.org/problemDetails/entityNotFound']
+        detail:
+          type: string
+        identifiers:
+          oneOf:
+            - $ref: '#/components/schemas/commonIdentifiers'
+            - $ref: '#/components/schemas/requestIdentifier'
+
+    capabilityNotSupportedError:
+      type: object
+      properties:
+        title:
+          type: string
+          enum: ['https://docs.freightapis.org/problemDetails/capabilityNotSupportedError']
+        detail:
+          type: string
+
+    invalidArgumentError:
+      type: object
+      properties:
+        title:
+          type: string
+          enum: ['https://docs.freightapis.org/problemDetails/invalidArgumentError']
+        detail:
+          type: string
+        arguments:
+          type: array
+          items:
+            type: object
+            properties:
+              key:
+                type: string
+              value:
+                type: object
+              detail:
+                type: string
+
+    appointmentError:
+      type: object
+      properties:
+        title:
+          type: string
+          enum: ['https://docs.freightapis.org/problemDetails/appointmentError']
+        detail:
+          type: string
+        appointment:
+          $ref: '#/components/schemas/appointment'
+
+    fetchAvailableAppointmentsResponse:
+      oneOf:
+        - title: Success
+          allOf:
+            - $ref: '#/components/schemas/responseInfoSuccess'
+            - type: object
+              required:
+                - appointments
+              properties:
+                appointments:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/availableAppointment'
+                locationId:
+                  type: string
+                locationAddress:
+                  $ref: '#/components/schemas/address'
+        - title: Pending
+          allOf:
+            - $ref: '#/components/schemas/responseInfoPending'
+        - title: Failure
+          $ref: '#/components/schemas/responseInfoFailure'
+
+    appointmentModificationResponse:
+      oneOf:
+        - title: Success
+          allOf:
+            - $ref: '#/components/schemas/responseInfoSuccess'
+            - type: object
+              required:
+                - appointment
+                - appointmentConfirmationNumber
+              properties:
+                appointment:
+                  $ref: '#/components/schemas/appointment'
+                appointmentStatus:
+                  $ref: '#/components/schemas/appointmentStatus'
+                appointmentConfirmationNumber:
+                  type: string
+                locationId:
+                  type: string
+                locationAddress:
+                  $ref: '#/components/schemas/address'
+        - $ref: '#/components/schemas/responseInfoPending'
+        - $ref: '#/components/schemas/responseInfoFailure'
+
+    appointmentDetailsResponse:
+      oneOf:
+        - allOf:
+            - $ref: '#/components/schemas/responseInfoSuccess'
+            - type: object
+              properties:
+                appointment:
+                  $ref: '#/components/schemas/appointment'
+                appointmentConfirmationNumber:
+                  type: string
+                appointmentStatus:
+                  $ref: '#/components/schemas/appointmentStatus'
+                mostRecentReasonCode:
+                  type: string
+                mostRecentComment:
+                  type: string
+                locationId:
+                  type: string
+                locationAddress:
+                  $ref: '#/components/schemas/address'
+        - $ref: '#/components/schemas/responseInfoFailure'
+
+    webhookEventType:
+      type: string
+      enum:
+        - appointment-changed
+        - fetch-available-appointments
+
+    subscription:
+      type: object
+      properties:
+        subscriptionId:
+          type: string
+        eventTypes:
+          type: array
+          items:
+            $ref: '#/components/schemas/webhookEventType'
+        callbackUrl:
+          type: string
+          format: uri
+
+    address:
+      type: object
+      description: Address following schema.org PostalAddress standard
+      properties:
+        streetAddress:
+          type: string
+          description: Street address (e.g., 1600 Amphitheatre Pkwy)
+        region:
+          type: string
+          description: State or region (e.g., California)
+        locality:
+          type: string
+          description: City (e.g., Mountain View)
+        country:
+          type: string
+          description: ISO 3166-1 alpha-3 country code (e.g., USA)
+        postalCode:
+          type: string
+          description: Postal or ZIP code
+
+    appointmentId:
+      type: object
+      properties:
+        appointmentId:
+          type: string
+
+    locationObject:
+      type: object
+      properties:
+        locationId:
+          type: string
+        locationAddress:
+          $ref: '#/components/schemas/address'
