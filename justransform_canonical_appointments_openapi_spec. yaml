@@ -7,13 +7,13 @@ info:
     Supports industry-standard communication protocols for carriers, brokers, and shippers.
     Integrates with 50+ scheduling systems including Blue Yonder, Manhattan, One Network, and more.
   contact:
-    name: JT API Support
-    email: api-support@jt.com
+    name: Justransform API Support
+    email: api-support@justransform.com
 
 servers:
-  - url: https://api.jt-scheduling.com
+  - url: https://api.justransform.com
     description: Production server
-  - url: https://sandbox-api.jt-scheduling.com
+  - url: https://sandbox-api.justransform.com
     description: Sandbox server
 
 security:
@@ -482,7 +482,7 @@ components:
       type: oauth2
       flows:
         clientCredentials:
-          tokenUrl: https://auth.jt-scheduling.com/oauth/token
+          tokenUrl: https://auth.justransform.com/oauth/token
           scopes:
             read: Read appointment data
             write: Create and modify appointments
@@ -721,7 +721,7 @@ components:
       properties:
         title:
           type: string
-          enum: ['https://docs.freightapis.org/problemDetails/entityNotFound']
+          enum: ['https://docs.justransform.com/problemDetails/entityNotFound']
         detail:
           type: string
         identifiers:
@@ -734,7 +734,7 @@ components:
       properties:
         title:
           type: string
-          enum: ['https://docs.freightapis.org/problemDetails/capabilityNotSupportedError']
+          enum: ['https://docs.justransform.com/problemDetails/capabilityNotSupportedError']
         detail:
           type: string
 
@@ -743,7 +743,7 @@ components:
       properties:
         title:
           type: string
-          enum: ['https://docs.freightapis.org/problemDetails/invalidArgumentError']
+          enum: ['https://docs.justransform.com/problemDetails/invalidArgumentError']
         detail:
           type: string
         arguments:
@@ -763,7 +763,7 @@ components:
       properties:
         title:
           type: string
-          enum: ['https://docs.freightapis.org/problemDetails/appointmentError']
+          enum: ['https://docs.justransform.com/problemDetails/appointmentError']
         detail:
           type: string
         appointment:
